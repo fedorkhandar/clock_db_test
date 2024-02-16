@@ -1,88 +1,111 @@
+// CREATE TABLE data (id SERIAL PRIMARY KEY, timestamp TIMESTAMP);
+// INSERT INTO data (timestamp) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM data WHERE timestamp = $1);
+// INSERT INTO data (timestamp) SELECT 1707999026 WHERE NOT EXISTS (SELECT 1 FROM data WHERE timestamp = 1707999026);
+// SELECT timestamp FROM data ORDER BY id DESC LIMIT 1;
+
 use postgres::{Client, NoTls};
 use chrono::{Utc, NaiveDateTime, DateTime};
 use std::sync::{Arc, Mutex};
 use std::thread::{spawn, sleep};
-use std::time::Duration;
-
+use std::time::{Duration, SystemTime};
 
 #[derive(Debug)]
 struct SharedStorage {
-    value: i32,
+    value: u64,
 }
 
-fn worker1() -> i32 {
-    chrono::Utc::now().timestamp() as i32
-}
+// fn worker1() -> u64 {
+//     chrono::Utc::now().timestamp() as u64
+// }
 
-fn worker2(conn: &mut Client, timestamp: i32) {
-    // let mut conn = Client::connect("postgres://postgres:postgres@localhost:5432/clock_db", NoTls)
-    //     .expect("Error while connecting to DB");    
-    conn.execute("INSERT INTO data (timestamp) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM data WHERE timestamp = $1);", &[&timestamp]).expect("Error while inserting data");
-}
+// fn worker2(conn: &mut Client, timestamp: u64) {
+//     let timestamp = SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp);
+//     conn.execute("INSERT INTO data (timestamp) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM data WHERE timestamp = $1);", &[&timestamp])
+//         .expect("Error while inserting data");
+// }
 
-fn human_time(timestamp: i32) -> String {
-    let timestamp_as_i64 = timestamp as i64;
-    let naive = NaiveDateTime::from_timestamp_opt(timestamp_as_i64,  0);
-    let datetime: DateTime<Utc> = DateTime::from_naive_utc_and_offset(naive.unwrap(), Utc);
-    let formatted_time = datetime.format("%y.%m.%d %H:%M:%S").to_string();
-    formatted_time
-}
+// fn human_time(timestamp: SystemTime) -> String {
+//     let datetime: DateTime<Utc> = DateTime::from(timestamp);
+//     let formatted_time = datetime.format("%y.%m.%d %H:%M:%S").to_string();
+//     formatted_time
+// }
 
-fn worker3(conn: &mut Client) -> String {
-    // let mut conn = Client::connect("postgres://postgres:postgres@localhost:5432/clock_db", NoTls)
-    //     .expect("Error while connecting to DB");
-    let res = conn.query("SELECT timestamp FROM data ORDER BY id DESC LIMIT 1", &[])
-        .expect("Error while selecting data");
-    if res.is_empty() {
-        "No data in DB".to_string()
-    } else {
-        let row = &res[0];
-        let timestamp: i32 = row.get(0);
-        human_time(timestamp)
-    }
-}
+// fn worker3(conn: &mut Client) -> String {
+//     let res = conn.query("SELECT timestamp FROM data ORDER BY id DESC LIMIT 1", &[])
+//         .expect("Error while selecting data");
+//     if res.is_empty() {
+//         "".to_string()
+//     } else {
+//         let row = &res[0];
+//         let timestamp: SystemTime = row.get(0);
+//         human_time(timestamp)
+//     }
+// }
+
 
 fn main() {
-    let data = Arc::new(Mutex::new(SharedStorage { value: 0 }));
-    let data_clone = data.clone();
-
-    let thread1 = spawn(move || {
-        sleep(Duration::from_secs(1));
-        for i in 0..10 {
-            let mut guard = data_clone.lock().unwrap();
-            guard.value = worker1();
-            // println!("T1 [{i}]: {} to the SharedStorage", guard.value);
-            sleep(Duration::from_secs(1));
+    let data = Arc::new(Mutex::new(SharedStorage { value: 1707999026 }));
+    
+    let thread1 = spawn({
+        let data_clone1 = data.clone();
+        move || {
+            while 1 == 1 {
+                let mut guard = data_clone1.lock().unwrap();
+                guard.value = chrono::Utc::now().timestamp() as u64;
+                sleep(Duration::from_millis(1000));
+            }
         }
     });
 
-    let data_clone = data.clone();
-    let thread2 = spawn(move || {
+    
+    let thread2 = spawn({
+        
+
         let mut conn2 = Client::connect("postgres://postgres:postgres@localhost:5432/clock_db", NoTls)
-            .expect("Error while connecting to DB");
-        sleep(Duration::from_secs(1));
-        for i in 0..10 {
-            let guard = data_clone.lock().unwrap();
-            let timestamp = guard.value;
-            worker2(&mut conn2, timestamp);
-            // println!("T2 [{i}]: From SharedStorage {} and to DB", guard.value);
-            sleep(Duration::from_millis(500));
+                .expect("Error while connecting to DB");
+        let data_clone2 = data.clone();
+        move || {
+            while 1 == 1 {
+                
+                // worker2(&mut conn2, data_clone2.lock().unwrap().value);
+                let timestamp = SystemTime::UNIX_EPOCH + Duration::from_secs(data_clone2.lock().unwrap().value);
+                conn2.execute("INSERT INTO data (timestamp) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM data WHERE timestamp = $1);", &[&timestamp])
+                    .expect("Error while inserting data");
+
+                sleep(Duration::from_millis(500));
+            }
         }
     });
 
     let thread3 = spawn(move || {
         let mut conn3 = Client::connect("postgres://postgres:postgres@localhost:5432/clock_db", NoTls)
             .expect("Error while connecting to DB");
-        sleep(Duration::from_secs(1));
-        for _ in 0..10 {
-            let formatted_time = worker3(&mut conn3);
-            // println!("T3: {} from DB", formatted_time);
-            println!(">>> {}", formatted_time);
-            sleep(Duration::from_secs(1));
+
+        while 1 == 1 {
+            // let formatted_time = worker3(&mut conn3);
+            let mut formatted_time: String = "".to_string();
+
+            let res = conn3.query("SELECT timestamp FROM data ORDER BY id DESC LIMIT 1", &[])
+                .expect("Error while selecting data");
+
+            if res.is_empty() {
+                formatted_time = "".to_string();
+            } else {
+                let row = &res[0];
+                let timestamp: SystemTime = row.get(0);
+                let datetime: DateTime<Utc> = DateTime::from(timestamp);
+                formatted_time = datetime.format("%y.%m.%d %H:%M:%S").to_string();
+                // human_time(timestamp)
+            }
+
+            if formatted_time != "" {
+                println!("{:?}", formatted_time);
+            }
+            sleep(Duration::from_millis(1000));
         }
     });
 
-    thread1.join().unwrap();
-    thread2.join().unwrap();
-    thread3.join().unwrap();
+    // thread1.join().expect("Error while joining threads");
+    // thread2.join().expect("Error while joining threads");
+    thread3.join().expect("Error while joining threads");
 }
