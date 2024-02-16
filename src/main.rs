@@ -1,6 +1,6 @@
 // CREATE DATABSE clock_db;
 // CREATE TABLE data (id SERIAL PRIMARY KEY, timestamp TIMESTAMP);
-
+//TODO: Да, обычно мы в проекте явно пишем пару lock/unlock, чтобы избежать таких ситуаций. В расте аналогом будет lock/std::mem::drop(guard)
 use chrono::{DateTime, Utc};
 use postgres::{Client, NoTls};
 use std::sync::{Arc, Mutex};
